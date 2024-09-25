@@ -31,7 +31,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         volume = float(call.data.get('volume'))
         span = call.data.get('duration', 5)
 
-        # Extract all entity IDs referenced in the service call, including those in 'target'
         referenced = async_extract_referenced_entity_ids(hass, call)
         entity_ids = referenced.referenced | referenced.indirectly_referenced
 
@@ -42,7 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         # Convert target volume to integer percentage
         target_volume_int = int(round(volume * 100))
 
-        # For each entity, start the volume adjustment process
+        # For each entity, schedule the volume adjustment process
         tasks = [
             adjust_volume(hass, entity_id, target_volume_int, span)
             for entity_id in entity_ids
