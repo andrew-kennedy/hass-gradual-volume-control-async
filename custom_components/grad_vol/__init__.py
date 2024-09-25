@@ -2,33 +2,46 @@
 import asyncio
 import logging
 import math
+from typing import List
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers.typing import HomeAssistantType
+from homeassistant.helpers.entity_platform import async_get_platforms
+from homeassistant.helpers import entity_registry
+from homeassistant.helpers.service import async_extract_relevant_entity_ids
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup(hass: HomeAssistant, config: dict):
-    """Set up Gradual Volume Control integration."""
-    # We don't set up via configuration.yaml
+
+async def async_setup(hass: HomeAssistantType, config: dict):
+    """Set up the Gradual Volume Control integration."""
+    # We're using config entries (config flow), so we don't need to set up anything here.
     return True
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+
+async def async_setup_entry(hass: HomeAssistantType, entry: ConfigEntry):
     """Set up Gradual Volume Control from a config entry."""
     # Register services when the entry is set up
     hass.data.setdefault(DOMAIN, {})
 
-    async def handle_set_volume(call):
+    async def handle_set_volume(call: ServiceCall):
         """Handle the service call."""
-        # Your existing service implementation
-        entity_ids = call.data.get('entity_id')
-        target_volume = float(call.data.get('volume'))
+        target = call.data.get('target')
+        volume = float(call.data.get('volume'))
         span = call.data.get('duration', 5)
 
+        # Resolve the target to entity IDs
+        entity_ids = await _async_get_media_player_entities(hass, target)
+
+        if not entity_ids:
+            _LOGGER.warning("No available media player entities found for the target: %s", target)
+            return
+
         # Convert target volume to integer percentage
-        target_volume_int = int(round(target_volume * 100))
+        target_volume_int = int(round(volume * 100))
 
         # For each entity, start the volume adjustment process
         tasks = [
@@ -39,13 +52,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         # Wait for all volume adjustments to complete
         await asyncio.gather(*tasks)
 
-    async def adjust_volume(hass, entity_id, target_volume_int, span):
+    async def adjust_volume(hass: HomeAssistantType, entity_id: str, target_volume_int: int, span: float):
         """Adjust the volume of a single entity over time using a sine easing function."""
         state = hass.states.get(entity_id)
 
         # Skip if the entity is unavailable or off
         if state is None or state.state in ('unavailable', 'unknown', 'off'):
-            _LOGGER.warning("Entity %s is unavailable or off. Skipping.", entity_id)
+            # Entity is unavailable, skip without logging a warning
             return
 
         volume = state.attributes.get('volume_level')
@@ -53,8 +66,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         if volume is None:
             _LOGGER.warning("Entity %s has no volume_level attribute. Skipping.", entity_id)
             return
-
-        # Rest of your existing adjust_volume implementation...
 
         # Convert current volume to integer percentage
         volume_int = int(round(float(volume) * 100))
@@ -75,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             return
 
         # Handle the case where steps <= 1
-        if steps <= 1:
+        if steps <= 1 or span <= 0:
             # Adjust the volume immediately
             scheduled_volume = target_volume_int / 100.0
             await hass.services.async_call(
@@ -117,11 +128,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
                 # Wait for the time interval before the next adjustment
                 await asyncio.sleep(time_interval)
 
+    # Register the service with the updated schema
     hass.services.async_register(DOMAIN, "set_volume", handle_set_volume)
 
     return True
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+
+async def async_unload_entry(hass: HomeAssistantType, entry: ConfigEntry):
     """Handle removal of an entry."""
     hass.services.async_remove(DOMAIN, "set_volume")
     return True
+
+
+async def _async_get_media_player_entities(hass: HomeAssistantType, target) -> List[str]:
+    """Resolve the target into a list of available media player entity IDs."""
+    # Use Home Assistant's helper to resolve the target
+    entity_ids = async_extract_relevant_entity_ids(hass, target)
+
+    # Filter entities to ensure they are media players
+    media_player_entity_ids = [
+        entity_id for entity_id in entity_ids
+        if entity_id.startswith("media_player.")
+    ]
+
+    # Filter out unavailable entities
+    available_entity_ids = [
+        entity_id for entity_id in media_player_entity_ids
+        if hass.states.get(entity_id) is not None and hass.states.get(entity_id).state not in ('unavailable', 'unknown', 'off')
+    ]
+
+    return available_entity_ids
