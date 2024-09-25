@@ -1,31 +1,127 @@
-DOMAIN = "grad_vol"
-import time
+"""The Gradual Volume Control integration."""
+import asyncio
+import logging
+import math
 
-def setup(hass, config):
-    """Set up is called when Home Assistant is loading our component."""
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
-    def handle_set_volume(call):
+from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
+
+async def async_setup(hass: HomeAssistant, config: dict):
+    """Set up Gradual Volume Control integration."""
+    # We don't set up via configuration.yaml
+    return True
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Set up Gradual Volume Control from a config entry."""
+    # Register services when the entry is set up
+    hass.data.setdefault(DOMAIN, {})
+
+    async def handle_set_volume(call):
         """Handle the service call."""
+        # Your existing service implementation
         entity_ids = call.data.get('entity_id')
-        target_volume= round(float(call.data.get('volume')),2)
-        span = call.data.get('duration',5)
-        for entity_id in entity_ids:
-            if hass.states.get(entity_id).state ==  'off':
-                continue 
-            volume = round(float(hass.states.get(entity_id).attributes.get('volume_level')),2)
-            if volume == None or abs(volume-target_volume) < 0.02: continue
-            sleeptime = span/(abs(volume - target_volume)/0.01)
-            while abs(volume-target_volume) > 0.02:
-                if target_volume < volume:
-                    volume -= 0.01
-                else:
-                    volume += 0.01
-                hass.services.call('media_player', 'volume_set', {'entity_id': entity_id, 'volume_level': volume})
-                time.sleep(sleeptime)
-            hass.services.call('media_player', 'volume_set', {'entity_id': entity_id, 'volume_level': target_volume})
-        return
+        target_volume = float(call.data.get('volume'))
+        span = call.data.get('duration', 5)
 
-    hass.services.register(DOMAIN, "set_volume", handle_set_volume)
+        # Convert target volume to integer percentage
+        target_volume_int = int(round(target_volume * 100))
 
-    # Return boolean to indicate that initialization was successful.
+        # For each entity, start the volume adjustment process
+        tasks = [
+            adjust_volume(hass, entity_id, target_volume_int, span)
+            for entity_id in entity_ids
+        ]
+
+        # Wait for all volume adjustments to complete
+        await asyncio.gather(*tasks)
+
+    async def adjust_volume(hass, entity_id, target_volume_int, span):
+        """Adjust the volume of a single entity over time using a sine easing function."""
+        state = hass.states.get(entity_id)
+
+        # Skip if the entity is unavailable or off
+        if state is None or state.state in ('unavailable', 'unknown', 'off'):
+            _LOGGER.warning("Entity %s is unavailable or off. Skipping.", entity_id)
+            return
+
+        volume = state.attributes.get('volume_level')
+
+        if volume is None:
+            _LOGGER.warning("Entity %s has no volume_level attribute. Skipping.", entity_id)
+            return
+
+        # Rest of your existing adjust_volume implementation...
+
+        # Convert current volume to integer percentage
+        volume_int = int(round(float(volume) * 100))
+
+        if volume_int == target_volume_int:
+            # Already at target volume, no adjustment needed
+            return
+
+        # Determine the direction of volume change
+        step = 1 if target_volume_int > volume_int else -1
+
+        # Calculate the total number of steps
+        volume_diff = abs(target_volume_int - volume_int)
+        steps = volume_diff
+
+        if steps == 0:
+            # No volume change needed
+            return
+
+        # Handle the case where steps <= 1
+        if steps <= 1:
+            # Adjust the volume immediately
+            scheduled_volume = target_volume_int / 100.0
+            await hass.services.async_call(
+                'media_player',
+                'volume_set',
+                {'entity_id': entity_id, 'volume_level': scheduled_volume},
+                blocking=False
+            )
+            return
+
+        # Calculate the time interval between steps
+        time_interval = span / steps
+
+        # Start the volume adjustment loop
+        for i in range(1, steps + 1):
+            fraction = i / steps  # Progress fraction from 0 to 1
+
+            # Sine easing calculation
+            adjustment = math.sin(fraction * (math.pi / 2))  # Varies from 0 to 1
+            volume_change = int(round(volume_diff * adjustment))
+            scheduled_volume_int = volume_int + step * volume_change
+
+            # Ensure the final volume is set precisely to the target
+            if i == steps:
+                scheduled_volume_int = target_volume_int
+
+            # Convert back to decimal representation
+            scheduled_volume = scheduled_volume_int / 100.0
+
+            # Adjust the volume
+            await hass.services.async_call(
+                'media_player',
+                'volume_set',
+                {'entity_id': entity_id, 'volume_level': scheduled_volume},
+                blocking=False
+            )
+
+            if i < steps:
+                # Wait for the time interval before the next adjustment
+                await asyncio.sleep(time_interval)
+
+    hass.services.async_register(DOMAIN, "set_volume", handle_set_volume)
+
+    return True
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Handle removal of an entry."""
+    hass.services.async_remove(DOMAIN, "set_volume")
     return True
