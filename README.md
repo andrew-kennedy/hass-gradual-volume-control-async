@@ -1,10 +1,10 @@
-# homeassistant_gradual_volume_control  [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
- This integration provides a service to gradually change the volume of a mediaplayer over a given timespan
+# hass-gradual-volume-control-async  [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
+ This integration provides a service to gradually change the volume of target mediaplayers over a given timespan
 ## Installation (with HACS)
 
 1. Go to Home Assistant > HACS > Integrations > Click on tree dot (on top right corner) > Custom repositories \
 and fill :
-   * **Repository** :  `NinDTendo/homeassistant_gradual_volume_control`
+   * **Repository** :  `andrew-kennedy/hass-gradual-volume-control-async`
    * **Category** : `Integration` 
 
 2. Click on `ADD`, restart HA.
@@ -16,12 +16,7 @@ and fill :
 
 ## Configuration
 
-Edit your Home Assistant `configuration.yaml` and set :
-
-``` YAML
-grad_vol:
-```
-to use this integration.
+Add the integration via the integrations section of home assistant.
 
 ## Usage
 
@@ -30,6 +25,8 @@ For example: I want to have the volume gradually increase to 80% over 20 seconds
 The volume would be: 0.8
 duration: 20
 if the duration is not provided it will fall back to 5 seconds by default.
+
+If there are multiple resolved entity targets, they will all have their volume's adjusted over the duration in parallel.
 
 example:
 ``` YAML
