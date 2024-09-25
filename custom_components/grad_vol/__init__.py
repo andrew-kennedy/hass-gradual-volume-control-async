@@ -2,11 +2,10 @@
 import asyncio
 import logging
 import math
-from typing import Set
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers.service import async_extract_referenced_entity_ids
 
 from .const import DOMAIN
 
@@ -32,8 +31,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         volume = float(call.data.get('volume'))
         span = call.data.get('duration', 5)
 
-        # Resolve the target to entity IDs
-        entity_ids = await _async_get_media_player_entities(hass, call.data.get('target'))
+        # Extract all entity IDs referenced in the service call, including those in 'target'
+        referenced = async_extract_referenced_entity_ids(hass, call)
+        entity_ids = referenced.referenced | referenced.indirectly_referenced
 
         if not entity_ids:
             _LOGGER.warning("No available media player entities found for the target.")
@@ -137,58 +137,3 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Handle removal of an entry."""
     hass.services.async_remove(DOMAIN, "set_volume")
     return True
-
-
-async def _async_get_media_player_entities(hass: HomeAssistant, target) -> Set[str]:
-    """Resolve the target into a set of media player entity IDs."""
-    entity_ids: Set[str] = set()
-
-    # Get entity IDs from entities
-    if target.get('entity_id'):
-        entity_ids.update(target['entity_id'])
-
-    # Get entity IDs from devices
-    if target.get('device_id'):
-        device_registry = dr.async_get(hass)
-        entity_registry = er.async_get(hass)
-        for device_id in target['device_id']:
-            # Get entities for this device
-            entries = er.async_entries_for_device(
-                entity_registry, device_id, include_disabled_entities=False
-            )
-            entity_ids.update(
-                entry.entity_id for entry in entries if entry.domain == 'media_player'
-            )
-
-    # Get entity IDs from areas
-    if target.get('area_id'):
-        entity_registry = er.async_get(hass)
-        for area_id in target['area_id']:
-            # Get entities for this area
-            entries = er.async_entries_for_area(
-                entity_registry, area_id
-            )
-            entity_ids.update(
-                entry.entity_id for entry in entries if entry.domain == 'media_player'
-            )
-
-    # **Handle Labels**
-    if target.get('label'):
-        entity_registry = er.async_get(hass)
-        for label in target['label']:
-            # Get entities for this label
-            entries = [
-                entry for entry in entity_registry.entities.values()
-                if label in entry.labels
-            ]
-            entity_ids.update(
-                entry.entity_id for entry in entries if entry.domain == 'media_player'
-            )
-
-    # Filter out unavailable entities
-    available_entity_ids = {
-        entity_id for entity_id in entity_ids
-        if hass.states.get(entity_id) is not None and hass.states.get(entity_id).state not in ('unavailable', 'unknown', 'off')
-    }
-
-    return available_entity_ids
