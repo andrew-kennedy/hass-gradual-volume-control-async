@@ -7,9 +7,7 @@ from typing import List
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import HomeAssistantType
-from homeassistant.helpers.entity_platform import async_get_platforms
-from homeassistant.helpers import entity_registry
-from homeassistant.helpers.service import async_extract_relevant_entity_ids
+from homeassistant.helpers.service import async_extract_entity_ids
 
 from .const import DOMAIN
 
@@ -29,15 +27,20 @@ async def async_setup_entry(hass: HomeAssistantType, entry: ConfigEntry):
 
     async def handle_set_volume(call: ServiceCall):
         """Handle the service call."""
-        target = call.data.get('target')
         volume = float(call.data.get('volume'))
         span = call.data.get('duration', 5)
 
-        # Resolve the target to entity IDs
-        entity_ids = await _async_get_media_player_entities(hass, target)
+        # Extract entity IDs from the service call
+        raw_entity_ids = await async_extract_entity_ids(hass, call)
 
-        if not entity_ids:
-            _LOGGER.warning("No available media player entities found for the target: %s", target)
+        # Filter entities to ensure they are media players
+        media_player_entity_ids = [
+            entity_id for entity_id in raw_entity_ids
+            if entity_id.startswith("media_player.")
+        ]
+
+        if not media_player_entity_ids:
+            _LOGGER.warning("No available media player entities found for the target.")
             return
 
         # Convert target volume to integer percentage
@@ -46,7 +49,7 @@ async def async_setup_entry(hass: HomeAssistantType, entry: ConfigEntry):
         # For each entity, start the volume adjustment process
         tasks = [
             adjust_volume(hass, entity_id, target_volume_int, span)
-            for entity_id in entity_ids
+            for entity_id in media_player_entity_ids
         ]
 
         # Wait for all volume adjustments to complete
@@ -138,23 +141,3 @@ async def async_unload_entry(hass: HomeAssistantType, entry: ConfigEntry):
     """Handle removal of an entry."""
     hass.services.async_remove(DOMAIN, "set_volume")
     return True
-
-
-async def _async_get_media_player_entities(hass: HomeAssistantType, target) -> List[str]:
-    """Resolve the target into a list of available media player entity IDs."""
-    # Use Home Assistant's helper to resolve the target
-    entity_ids = async_extract_relevant_entity_ids(hass, target)
-
-    # Filter entities to ensure they are media players
-    media_player_entity_ids = [
-        entity_id for entity_id in entity_ids
-        if entity_id.startswith("media_player.")
-    ]
-
-    # Filter out unavailable entities
-    available_entity_ids = [
-        entity_id for entity_id in media_player_entity_ids
-        if hass.states.get(entity_id) is not None and hass.states.get(entity_id).state not in ('unavailable', 'unknown', 'off')
-    ]
-
-    return available_entity_ids
