@@ -1,15 +1,10 @@
 set_volume:
   name: Gradually Set Volume
   description: Gradually adjust the volume of media players.
+  target:
+    entity:
+      domain: media_player
   fields:
-    target:
-      name: Target
-      description: Media players to adjust.
-      required: true
-      selector:
-        target:
-          entity:
-            domain: media_player
     volume:
       name: Target Volume
       description: The target volume level (0.0 to 1.0).
