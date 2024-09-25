@@ -2,6 +2,7 @@
     "domain": "grad_vol",
     "name": "Gradual Volume",
     "codeowners": ["@andrew-kennedy"],
+    "config_flow": true,
     "dependencies": [],
     "documentation": "https://github.com/andrew-kennedy/hass-gradual-volume-control-async/blob/main/README.md",
     "integration_type": "service",
