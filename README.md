@@ -1,5 +1,7 @@
 # hass-gradual-volume-control-async  [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
- This integration provides a service to gradually change the volume of target mediaplayers over a given timespan
+ This integration provides a service to gradually change the volume of target mediaplayers over a given timespan.
+ Huge thanks to NinDTendo for their project https://github.com/NinDTendo/homeassistant_gradual_volume_control which I started with and modified to be fully async and work simultaneously across multiple media players instead of changing volumes sequentially. I also enabled configuring it with config flow instead of having to modify configuration.yaml.
+ 
 ## Installation (with HACS)
 
 1. Go to Home Assistant > HACS > Integrations > Click on tree dot (on top right corner) > Custom repositories \
