@@ -6,21 +6,23 @@ from typing import List
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.typing import HomeAssistantType
 from homeassistant.helpers.service import async_extract_entity_ids
 
 from .const import DOMAIN
 
+# Pre-import config_flow to avoid blocking import during async operations
+from . import config_flow
+
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup(hass: HomeAssistantType, config: dict):
+async def async_setup(hass: HomeAssistant, config: dict):
     """Set up the Gradual Volume Control integration."""
     # We're using config entries (config flow), so we don't need to set up anything here.
     return True
 
 
-async def async_setup_entry(hass: HomeAssistantType, entry: ConfigEntry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up Gradual Volume Control from a config entry."""
     # Register services when the entry is set up
     hass.data.setdefault(DOMAIN, {})
@@ -55,7 +57,7 @@ async def async_setup_entry(hass: HomeAssistantType, entry: ConfigEntry):
         # Wait for all volume adjustments to complete
         await asyncio.gather(*tasks)
 
-    async def adjust_volume(hass: HomeAssistantType, entity_id: str, target_volume_int: int, span: float):
+    async def adjust_volume(hass: HomeAssistant, entity_id: str, target_volume_int: int, span: float):
         """Adjust the volume of a single entity over time using a sine easing function."""
         state = hass.states.get(entity_id)
 
@@ -137,7 +139,7 @@ async def async_setup_entry(hass: HomeAssistantType, entry: ConfigEntry):
     return True
 
 
-async def async_unload_entry(hass: HomeAssistantType, entry: ConfigEntry):
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Handle removal of an entry."""
     hass.services.async_remove(DOMAIN, "set_volume")
     return True
